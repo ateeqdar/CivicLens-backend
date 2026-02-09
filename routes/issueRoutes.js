@@ -64,4 +64,12 @@ router.delete(
   issueController.deleteIssue
 );
 
+// Head Authority: Bulk delete issues
+router.post(
+  '/bulk-delete',
+  authenticate,
+  authorize(['head_authority']),
+  issueController.bulkDeleteIssues
+);
+
 module.exports = router;

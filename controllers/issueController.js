@@ -11,7 +11,7 @@ exports.createIssue = async (req, res) => {
   console.log('Body:', req.body);
   
   try {
-    const { image_url, description, location_lat, location_lng, manual_department, manual_issue_type } = req.body;
+    const { image_url, description, location_lat, location_lng, manual_department, manual_issue_type, is_manual_submission } = req.body;
     
     // 1. Validation
     if (!image_url) return res.status(400).json({ error: 'Missing field: image_url' });
@@ -44,6 +44,19 @@ exports.createIssue = async (req, res) => {
     const finalIssueType = manual_issue_type || aiResult.issue_type;
 
     // 3. Save Issue to DB (Using supabaseAdmin to bypass RLS for backend service)
+    // Check if it's a manual report - be very explicit
+    const isManual = Boolean(
+      is_manual_submission === true ||
+      (manual_department && String(manual_department).trim() !== '') || 
+      (manual_issue_type && String(manual_issue_type).trim() !== '')
+    );
+    
+    console.log('Final Manual Status Check:', {
+      manual_department,
+      manual_issue_type,
+      isManual
+    });
+
     const issueData = {
       citizen_id,
       image_url,
@@ -53,7 +66,10 @@ exports.createIssue = async (req, res) => {
       issue_type: finalIssueType,
       assigned_authority: finalDepartment,
       department: finalDepartment,
-      ai_analysis: aiResult || {},
+      ai_analysis: {
+        ...aiResult,
+        is_manual: isManual
+      },
       status: 'reported'
     };
 
@@ -334,5 +350,42 @@ exports.deleteIssue = async (req, res) => {
     console.error('--- DELETE ISSUE CATCH ERROR ---');
     console.error(error);
     res.status(500).json({ error: 'Failed to delete issue' });
+  }
+};
+
+/**
+ * POST /issues/bulk-delete
+ * Role: head_authority
+ */
+exports.bulkDeleteIssues = async (req, res) => {
+  console.log('--- BULK DELETE ISSUES REQUEST ---');
+  console.log('User:', req.user ? { id: req.user.id, email: req.user.email, role: req.user.role } : 'No User');
+  console.log('Body:', req.body);
+  try {
+    const { issueIds } = req.body;
+
+    if (!Array.isArray(issueIds) || issueIds.length === 0) {
+      return res.status(400).json({ error: 'Invalid or empty array of issue IDs provided' });
+    }
+
+    const { error } = await supabaseAdmin
+      .from('issues')
+      .delete()
+      .in('id', issueIds);
+
+    if (error) {
+      console.error('Supabase Bulk Delete Error:', error);
+      return res.status(500).json({ 
+        error: 'Database error',
+        details: error.message 
+      });
+    }
+
+    console.log(`${issueIds.length} issues deleted successfully.`);
+    res.status(204).send(); // No Content
+  } catch (error) {
+    console.error('--- BULK DELETE ISSUES CATCH ERROR ---');
+    console.error(error);
+    res.status(500).json({ error: 'Failed to bulk delete issues' });
   }
 };
