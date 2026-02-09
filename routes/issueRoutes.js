@@ -49,10 +49,9 @@ router.patch(
   issueController.reassignIssue
 );
 
-// Any authenticated user: Get single issue detail
+// Public: Get single issue detail
 router.get(
   '/:id',
-  authenticate,
   issueController.getIssueById
 );
 
